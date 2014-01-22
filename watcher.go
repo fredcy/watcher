@@ -5,6 +5,7 @@ import (
 	"log"
 	"github.com/howeyc/fsnotify"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -21,7 +22,8 @@ func handle(filename string) {
 		log.Printf("About to run command: %s %s", *command, filename)
 	}
 	if ! *dryrun {
-		out, err := exec.Command(*command, filename).CombinedOutput()
+		args := append(strings.Split(*command, " "), filename)
+		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
 		if err != nil {
 			log.Printf("command failed: %v\n%s", err, out)
 			return
