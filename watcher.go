@@ -17,6 +17,8 @@ var debug = flag.Bool("debug", false, "print debug output")
 var verbose = flag.Bool("verbose", false, "print verbose output")
 var dryrun = flag.Bool("dryrun", false, "do not execute command")
 
+var latency = 2
+
 func handle(filename string) {
 	if *verbose {
 		log.Printf("About to run command: %s %s", *command, filename)
@@ -25,16 +27,16 @@ func handle(filename string) {
 		args := append(strings.Split(*command, " "), filename)
 		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
 		if err != nil {
-			log.Printf("command failed: %v\n%s", err, out)
+			log.Printf("Command failed: %v\n%s", err, out)
 			return
 		}
-		log.Printf("output is %s", out)
+		log.Printf("Output is %s", out)
 	}
 }
 
 func main() {
 	flag.Parse()
-	log.Printf("watching %v\nto run %v", *directory, *command)
+	log.Printf("Watching %v to run command '%v'", *directory, *command)
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err)
@@ -52,11 +54,13 @@ func main() {
 					modified <- ev.Name
 				}
             case err := <-watcher.Error:
-                log.Println("error:", err)
+                log.Println("Error:", err)
             }
         }
     }()
 
+	// Act on file-modification events, adding a latency so that we
+	// don't act until there are no events for a given time period.
 	go func() {
 		timer := time.NewTimer(time.Second)
 		timer.Stop()
@@ -65,7 +69,7 @@ func main() {
 			select {
 			case filename = <-modified:
 				if *debug { log.Println("modified event: ", filename) }
-				timer.Reset(2 * time.Second)
+				timer.Reset(time.Duration(latency) * time.Second)
 			case <-timer.C:
 				handle(filename)
 			}
