@@ -2,8 +2,10 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"github.com/howeyc/fsnotify"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -16,6 +18,7 @@ var directory = flag.String("directory", "/var/tmp", "directory to watch for cha
 var debug = flag.Bool("debug", false, "print debug output")
 var verbose = flag.Bool("verbose", false, "print verbose output")
 var dryrun = flag.Bool("dryrun", false, "do not execute command")
+var nostamp = flag.Bool("nostamp", false, "no datetime stamp for log output")
 
 var latency = 2
 
@@ -35,7 +38,11 @@ func handle(filename string) {
 }
 
 func main() {
+	log.SetOutput(os.Stderr)
 	flag.Parse()
+	if *nostamp {
+		log.SetFlags(0)
+	}
 	log.Printf("Watching %v to run command '%v'", *directory, *command)
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -44,7 +51,8 @@ func main() {
 	done := make(chan bool)
 	modified := make(chan string)
 
-	// read events from the watcher
+	// Read events from the watcher, passing on only Modify events to
+	// the 'modified' channel.
     go func() {
         for {
             select {
@@ -71,6 +79,7 @@ func main() {
 				if *debug { log.Println("modified event: ", filename) }
 				timer.Reset(time.Duration(latency) * time.Second)
 			case <-timer.C:
+				fmt.Println(filename)
 				handle(filename)
 			}
 		}
