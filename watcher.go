@@ -46,7 +46,7 @@ func main() {
 	log.Printf("Watching %v to run command '%v'", *directory, *command)
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Error: fsnotify.NewWatcher: ", err)
 	}
 	done := make(chan bool)
 	modified := make(chan string)
@@ -58,11 +58,11 @@ func main() {
             select {
             case ev := <-watcher.Event:
                 if *debug { log.Println("event:", ev) }
-				if ev.IsModify() {
+				if ev.IsCreate() || ev.IsModify() {
 					modified <- ev.Name
 				}
             case err := <-watcher.Error:
-                log.Println("Error:", err)
+                log.Println("Error: watcher.Error:", err)
             }
         }
     }()
@@ -76,7 +76,7 @@ func main() {
 		for {
 			select {
 			case filename = <-modified:
-				if *debug { log.Println("modified event: ", filename) }
+				if *debug { log.Println("modified event:", filename) }
 				timer.Reset(time.Duration(latency) * time.Second)
 			case <-timer.C:
 				fmt.Println(filename)
@@ -87,7 +87,7 @@ func main() {
 
     err = watcher.Watch(*directory)
     if err != nil {
-        log.Fatal(err)
+        log.Fatalf("Error: watcher.Watch(%s): %s", *directory, err)
     }
     <-done
     watcher.Close()
