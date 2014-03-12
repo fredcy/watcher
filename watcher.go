@@ -7,6 +7,7 @@ import (
 	"github.com/howeyc/fsnotify"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -22,6 +23,7 @@ func main() {
 	var commandflag = flag.String("command", "", "command to run")
 	var nostamp = flag.Bool("nostamp", false, "no datetime stamp for log output")
 	var latency = flag.Duration("latency", time.Second, "seconds to wait for notifications to settle")
+	var excludeflag = flag.String("exclude", "", "pattern of files to ignore")
 
 	log.SetOutput(os.Stderr)
 	flag.Parse()
@@ -31,6 +33,11 @@ func main() {
 	var directories = flag.Args()
 	var command = Command(*commandflag)
 	if *debug { log.Printf("Command is \"%v\"", command) }
+
+	var exclude *regexp.Regexp
+	if *excludeflag != "" {
+		exclude = regexp.MustCompile(*excludeflag)
+	}
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -48,7 +55,11 @@ func main() {
             case ev := <-watcher.Event:
                 if *debug { log.Println("from watcher.Event:", ev) }
 				if ev.IsCreate() || ev.IsModify() {
-					modified <- Filename(ev.Name)
+					if exclude != nil && exclude.Match([]byte(ev.Name)) {
+						if *debug { log.Println("Excluding:", ev.Name) }
+					} else {
+						modified <- Filename(ev.Name)
+					}
 				}
             case err := <-watcher.Error:
                 log.Println("Error: watcher.Error:", err)
