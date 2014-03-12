@@ -1,11 +1,10 @@
-package main
+package watcher
 
 import (
 	"flag"
 	"fmt"
 	"log"
 	"github.com/howeyc/fsnotify"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -15,35 +14,22 @@ import (
 type Filename string
 type Command string
 
-var debug = flag.Bool("debug", false, "print debug output")
+var Debug = flag.Bool("debug", false, "print debug output")
 var verbose = flag.Bool("verbose", false, "print verbose output")
 var dryrun = flag.Bool("dryrun", false, "do not execute command")
 
-func main() {
-	var commandflag = flag.String("command", "", "command to run")
-	var nostamp = flag.Bool("nostamp", false, "no datetime stamp for log output")
-	var latency = flag.Duration("latency", time.Second, "seconds to wait for notifications to settle")
-	var excludeflag = flag.String("exclude", "", "pattern of files to ignore")
+type Options struct {
+	Command Command
+	Latency time.Duration
+	Exclude *regexp.Regexp
+}
 
-	log.SetOutput(os.Stderr)
-	flag.Parse()
-	if *nostamp {
-		log.SetFlags(0)
-	}
-	var directories = flag.Args()
-	var command = Command(*commandflag)
-	if *debug { log.Printf("Command is \"%v\"", command) }
-
-	var exclude *regexp.Regexp
-	if *excludeflag != "" {
-		exclude = regexp.MustCompile(*excludeflag)
-	}
-
+func Watchdirs(directories []string, opts *Options, done chan bool) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal("Error: fsnotify.NewWatcher: ", err)
 	}
-	done := make(chan bool)
+
 	modified := make(chan Filename)
 	toreport := make(chan Filename, 100)
 
@@ -53,10 +39,10 @@ func main() {
         for {
             select {
             case ev := <-watcher.Event:
-                if *debug { log.Println("from watcher.Event:", ev) }
+                if *Debug { log.Println("from watcher.Event:", ev) }
 				if ev.IsCreate() || ev.IsModify() {
-					if exclude != nil && exclude.Match([]byte(ev.Name)) {
-						if *debug { log.Println("Excluding:", ev.Name) }
+					if opts.Exclude != nil && opts.Exclude.Match([]byte(ev.Name)) {
+						if *Debug { log.Println("Excluding:", ev.Name) }
 					} else {
 						modified <- Filename(ev.Name)
 					}
@@ -76,11 +62,11 @@ func main() {
 		for {
 			select {
 			case filename = <-modified:
-				if *debug { log.Println("from modified:", filename) }
+				if *Debug { log.Println("from modified:", filename) }
 				toreport <- filename
-				timer.Reset(time.Duration(*latency))
+				timer.Reset(opts.Latency)
 			case <-timer.C:
-				reportall(toreport, command)
+				reportall(toreport, opts.Command)
 			}
 		}
 	}()
