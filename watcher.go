@@ -24,18 +24,53 @@ type Options struct {
 	Exclude *regexp.Regexp
 }
 
+type changehandler func(Filename)
+
+// make_filechan calls the handler on the filename when there is at
+// least one input to the channel (that it returns) followed by quiet period.
+func make_filechan(filename Filename, latency time.Duration, handler changehandler) chan<- bool {
+	if *Debug { log.Printf("make_filechan(%v)", filename) }
+	c := make(chan bool)
+	go func() {
+		timer := time.NewTimer(time.Second)
+		timer.Stop()
+		for {
+			select {
+			case <-c:
+				if *Debug { log.Printf("make_filechan(%v) pinged", filename) }
+				timer.Reset(latency)
+			case <-timer.C:
+				handler(filename)
+			}
+		}
+	}()
+	return c
+}
+
+// Watchdirs waits for changes (including creations) to files in the
+// given directories and handles them when they change.
 func Watchdirs(directories []string, opts *Options, done chan bool) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal("Error: fsnotify.NewWatcher: ", err)
 	}
 
-	modified := make(chan Filename)
-	toreport := make(chan Filename, 100)
+	var handler changehandler
+	if opts.Command != "" {
+		handler = func(filename Filename) {
+			filenames := []Filename{filename}
+			handle(filenames, opts.Command)
+		}
+	} else {
+		handler = func(filename Filename) {
+			fmt.Println(string(filename))
+		}
+	}		
 
-	// Read events from the watcher and for interesting events pass
-	// the filename on to the 'modified' channel.
+	// Read events from the fsnotify watcher and for interesting
+	// events write to the channel created for each unique filename.
     go func() {
+		filechans := make(map[Filename]chan<- bool)
         for {
             select {
             case ev := <-watcher.Event:
@@ -44,7 +79,13 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 					if opts.Exclude != nil && opts.Exclude.Match([]byte(ev.Name)) {
 						if *Debug { log.Println("Excluding:", ev.Name) }
 					} else {
-						modified <- Filename(ev.Name)
+						filename := Filename(ev.Name)
+						filechan, ok := filechans[filename]
+						if ! ok {
+							filechan = make_filechan(filename, opts.Latency, handler)
+							filechans[filename] = filechan
+						}
+						filechan <- true
 					}
 				}
             case err := <-watcher.Error:
@@ -53,24 +94,6 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
         }
     }()
 
-	// Act on file-modification events, adding a latency so that we
-	// don't act until there are no events for a given time period.
-	go func() {
-		timer := time.NewTimer(time.Second)
-		timer.Stop()
-		var filename Filename
-		for {
-			select {
-			case filename = <-modified:
-				if *Debug { log.Println("from modified:", filename) }
-				toreport <- filename
-				timer.Reset(opts.Latency)
-			case <-timer.C:
-				reportall(toreport, opts.Command)
-			}
-		}
-	}()
-
 	for _, directory := range directories {
 		log.Printf("Watching %v", directory)
 		err = watcher.Watch(directory)
@@ -78,44 +101,14 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 			log.Fatalf("Error: watcher.Watch(%s): %s", directory, err)
 		}
 	}
+
     <-done
     watcher.Close()
 }
 
-// reportall reads all filenames from the channel (without blocking),
-// removes duplicates, reports the filenames on one line of output,
-// and runs the command (if any) on the filenames.
-func reportall(toreport chan Filename, command Command) {
-	names := getall(toreport)
-	snames := make([]string, len(names))
-	for i := range names {
-		snames[i] = string(names[i])
-	}
-	fmt.Println(strings.Join(snames, "\t"))
-	if command != "" {
-		handle(names, command)
-	}
-}
-
-// getall reads all the buffered filenames from the channel (without
-// blocking) and returns an array of the unique values.
-func getall(toreport chan Filename) []Filename {
-	reported := make(map [Filename] bool)
-	names := make([]Filename, 0)
-	for {
-		select {
-		case filename := <-toreport:
-			if ! reported[filename] {
-				names = append(names, filename)
-				reported[filename] = true
-			}
-		default:
-			return names
-		}
-	}
-}
-
 // handle runs the given shell command on the array of filenames.
+// stdout and stderr of the command is combined and written to the
+// process stdout. Any error return is logged.
 func handle(filenames []Filename, command Command) {
 	args := strings.Split(string(command), " ")
 	for _, filename := range filenames {
@@ -126,10 +119,9 @@ func handle(filenames []Filename, command Command) {
 	}
 	if ! *dryrun {
 		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+		fmt.Printf("%s", out)
 		if err != nil {
-			log.Printf("Command failed: %v\n%s", err, out)
-			return
+			log.Printf("Error: Command failed: args=%v err='%v'", args, err)
 		}
-		log.Printf("Output is %s", out)
 	}
 }
