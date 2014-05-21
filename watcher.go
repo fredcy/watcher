@@ -118,24 +118,33 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 // has changed and which accumulates the reported filenames and when
 // there is quiet period handles those filenames.
 func make_accumulator(latency time.Duration, command Command) changehandler {
-	is_changed := make(map[Filename]bool)
-	filenames := make([]Filename, 0)
+	var is_changed map[Filename]bool
+	var filenames []Filename
 	timer := time.NewTimer(time.Second)
 	timer.Stop()
+	reset_accum := func() {
+		is_changed = make(map[Filename]bool)
+		filenames = make([]Filename, 0)
+	}
+	report := func() {
+		snames := make([]string, len(filenames))
+		for i := range filenames {
+			snames[i] = string(filenames[i])
+		}
+		fmt.Println(strings.Join(snames, "\t"))
+		if command != "" {
+			run_command(filenames, command)
+		}
+	}
 	go func() {
+		reset_accum()
 		for {
 			select {
 			case <-timer.C:
-				snames := make([]string, len(filenames))
-				for i := range filenames {
-					snames[i] = string(filenames[i])
-				}
-				fmt.Println(strings.Join(snames, "\t"))
-				if command != "" {
-					run_command(filenames, command)
-				}
-				is_changed = make(map[Filename]bool)
-				filenames = make([]Filename, 0)
+				// No more file changes during latency period, so
+				// report what we've got
+				report()
+				reset_accum()
 			}
 		}
 	}()
