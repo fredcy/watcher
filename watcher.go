@@ -54,46 +54,6 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 	if err != nil {
 		log.Fatal("Error: fsnotify.NewWatcher: ", err)
 	}
-
-	var handler changehandler
-	if opts.Command != "" {
-		handler = func(filename Filename) {
-			filenames := []Filename{filename}
-			handle(filenames, opts.Command)
-		}
-	} else {
-		handler = func(filename Filename) {
-			fmt.Println(string(filename))
-		}
-	}		
-
-	// Read events from the fsnotify watcher and for interesting
-	// events write to the channel created for each unique filename.
-    go func() {
-		filechans := make(map[Filename]chan<- bool)
-        for {
-            select {
-            case ev := <-watcher.Event:
-                if *Debug { log.Println("from watcher.Event:", ev) }
-				if ev.IsCreate() || ev.IsModify() {
-					if opts.Exclude != nil && opts.Exclude.Match([]byte(ev.Name)) {
-						if *Debug { log.Println("Excluding:", ev.Name) }
-					} else {
-						filename := Filename(ev.Name)
-						filechan, ok := filechans[filename]
-						if ! ok {
-							filechan = make_filechan(filename, opts.Latency, handler)
-							filechans[filename] = filechan
-						}
-						filechan <- true
-					}
-				}
-            case err := <-watcher.Error:
-                log.Println("Error: watcher.Error:", err)
-            }
-        }
-    }()
-
 	for _, directory := range directories {
 		log.Printf("Watching %v", directory)
 		err = watcher.Watch(directory)
@@ -101,9 +61,75 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 			log.Fatalf("Error: watcher.Watch(%s): %s", directory, err)
 		}
 	}
+	handler := make_accumulator(opts.Latency, opts.Command)
 
-    <-done
+	// Read events from the fsnotify watcher and for interesting
+	// events write to the channel created for each unique filename.
+	filechans := make(map[Filename]chan<- bool)
+	for {
+		select {
+		case ev := <-watcher.Event:
+			if ev == nil {
+				log.Println("nil event received")
+				continue
+			}
+			if *Debug { log.Println("from watcher.Event:", ev) }
+			if ev.IsCreate() || ev.IsModify() {
+				if opts.Exclude != nil && opts.Exclude.Match([]byte(ev.Name)) {
+					if *Debug { log.Println("Excluding:", ev.Name) }
+				} else {
+					filename := Filename(ev.Name)
+					filechan, ok := filechans[filename]
+					if ! ok {
+						filechan = make_filechan(filename, opts.Latency, handler)
+						filechans[filename] = filechan
+					}
+					filechan <- true
+				}
+			}
+		case err := <-watcher.Error:
+			log.Println("Error: watcher.Error:", err)
+		case <-done:
+			break
+		}
+	}
     watcher.Close()
+}
+
+// make_accumulator returns a function that is called when a filename
+// has changed and which accumulates the reported filenames and when
+// there is quiet period handles those filenames.
+func make_accumulator(latency time.Duration, command Command) changehandler {
+	is_changed := make(map[Filename]bool)
+	filenames := make([]Filename, 0)
+	timer := time.NewTimer(time.Second)
+	timer.Stop()
+	go func() {
+		for {
+			select {
+			case <-timer.C:
+				snames := make([]string, len(filenames))
+				for i := range filenames {
+					snames[i] = string(filenames[i])
+				}
+				fmt.Println(strings.Join(snames, "\t"))
+				if command != "" {
+					handle(filenames, command)
+				}
+				is_changed = make(map[Filename]bool)
+				filenames = make([]Filename, 0)
+			}
+		}
+	}()
+	return func(filename Filename) {
+		if *Debug { log.Printf("accumulator func(%v)", filename) }
+		_, ok := is_changed[filename]
+		if ! ok {
+			is_changed[filename] = true
+			filenames = append(filenames, filename)
+		}
+		timer.Reset(latency)
+	}
 }
 
 // handle runs the given shell command on the array of filenames.
