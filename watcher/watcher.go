@@ -1,3 +1,5 @@
+// Package main provides a command line main() function that calls
+// watcher.Watchdirs()
 package main
 
 import (

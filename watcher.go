@@ -1,3 +1,12 @@
+// Package watcher provides a function and command line utility that
+// watches one or more files and directories and reports whenever they
+// are changed, writing their names to stdout. It can also run a
+// specified shell command on the changed files. It is built on top of
+// the fsnotify package.
+//
+// The reporting does some consolidation of events so that changes are
+// reported only when the file becomes quiescent. There is also
+// consolidation of changes over multiple files.
 package watcher
 
 import (
@@ -12,12 +21,19 @@ import (
 )
 
 type Filename string
+// Command is the shell command to run when files change.
 type Command string
 
+// Debug controls debug output messages to stdout.
 var Debug = flag.Bool("debug", false, "print debug output")
 var verbose = flag.Bool("verbose", false, "print verbose output")
 var dryrun = flag.Bool("dryrun", false, "do not execute command")
 
+// Type Options controls the reporting and consolidation. The Command
+// (if any) is run with the changed filenames as arguments. The
+// Latency is how long a file must be unchanged before we report the
+// prior changes; similarly, it's also how long we wait to accumulate
+// changes to multiple files.
 type Options struct {
 	Command Command
 	Latency time.Duration
@@ -48,7 +64,9 @@ func make_filechan(filename Filename, latency time.Duration, handler changehandl
 }
 
 // Watchdirs waits for changes (including creations) to files in the
-// given directories and handles them when they change.
+// given directories and handles them when they change. Default
+// handling is just to write the names to stdout.  If a command is
+// provided in the options it is also run.
 func Watchdirs(directories []string, opts *Options, done chan bool) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -114,7 +132,7 @@ func make_accumulator(latency time.Duration, command Command) changehandler {
 				}
 				fmt.Println(strings.Join(snames, "\t"))
 				if command != "" {
-					handle(filenames, command)
+					run_command(filenames, command)
 				}
 				is_changed = make(map[Filename]bool)
 				filenames = make([]Filename, 0)
@@ -132,10 +150,10 @@ func make_accumulator(latency time.Duration, command Command) changehandler {
 	}
 }
 
-// handle runs the given shell command on the array of filenames.
+// run_command runs the given shell command on the array of filenames.
 // stdout and stderr of the command is combined and written to the
 // process stdout. Any error return is logged.
-func handle(filenames []Filename, command Command) {
+func run_command(filenames []Filename, command Command) {
 	args := strings.Split(string(command), " ")
 	for _, filename := range filenames {
 		args = append(args, string(filename))
