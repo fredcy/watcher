@@ -60,5 +60,5 @@ func main() {
 	}
 
 	done := make(chan bool)
-	watcher.Watchdirs(directories, &watcher.Options{command, *latency, exclude}, done)
+	watcher.Watchdirs(directories, &watcher.Options{command, *latency, exclude, *subdirflag}, done)
 }
