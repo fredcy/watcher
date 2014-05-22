@@ -33,11 +33,13 @@ var dryrun = flag.Bool("dryrun", false, "do not execute command")
 // (if any) is run with the changed filenames as arguments. The
 // Latency is how long a file must be unchanged before we report the
 // prior changes; similarly, it's also how long we wait to accumulate
-// changes to multiple files.
+// changes to multiple files. Subdirs controls whether we watch
+// subdirectories after they are created.
 type Options struct {
 	Command Command
 	Latency time.Duration
 	Exclude *regexp.Regexp
+	Subdirs bool
 }
 
 type changehandler func(Filename)
@@ -52,8 +54,12 @@ func make_filechan(filename Filename, latency time.Duration, handler changehandl
 		timer.Stop()
 		for {
 			select {
-			case <-c:
-				if *Debug { log.Printf("make_filechan(%v) pinged", filename) }
+			case changed, ok := <-c:
+				if ! ok {
+					if *Debug { log.Printf("Stopping handler for %v", filename) }
+					return
+				}
+				if *Debug { log.Printf("make_filechan(%v) gets %v", filename, changed) }
 				timer.Reset(latency)
 			case <-timer.C:
 				handler(filename)
@@ -79,12 +85,14 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 			log.Fatalf("Error: watcher.Watch(%s): %s", directory, err)
 		}
 	}
-	handler := make_accumulator(opts.Latency, opts.Command)
+	changed := make_accumulator(opts.Latency, opts.Command)
+	handler := func(filename Filename) { changed <- filename }
 
 	// Read events from the fsnotify watcher and for interesting
 	// events write to the channel created for each unique filename.
 	filechans := make(map[Filename]chan<- bool)
-	for {
+	active := true
+	for active {
 		select {
 		case ev := <-watcher.Event:
 			if ev == nil {
@@ -96,6 +104,7 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 				if opts.Exclude != nil && opts.Exclude.Match([]byte(ev.Name)) {
 					if *Debug { log.Println("Excluding:", ev.Name) }
 				} else {
+					if *Debug { log.Printf("filechans=%v", filechans) }
 					filename := Filename(ev.Name)
 					filechan, ok := filechans[filename]
 					if ! ok {
@@ -108,16 +117,22 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 		case err := <-watcher.Error:
 			log.Println("Error: watcher.Error:", err)
 		case <-done:
-			break
+			if *Debug { log.Printf("Stopping main Watcher loop") }
+			for filename := range filechans {
+				close(filechans[filename])
+			}
+			close(changed)
+			active = false
 		}
 	}
     watcher.Close()
+	if *Debug { log.Printf("Watcher returning") }
 }
 
-// make_accumulator returns a function that is called when a filename
+// make_accumulator returns a channel that is written when a filename
 // has changed and which accumulates the reported filenames and when
 // there is quiet period handles those filenames.
-func make_accumulator(latency time.Duration, command Command) changehandler {
+func make_accumulator(latency time.Duration, command Command) chan Filename {
 	var is_changed map[Filename]bool
 	var filenames []Filename
 	timer := time.NewTimer(time.Second)
@@ -136,10 +151,24 @@ func make_accumulator(latency time.Duration, command Command) changehandler {
 			run_command(filenames, command)
 		}
 	}
+	changed := make(chan Filename)
 	go func() {
 		reset_accum()
 		for {
 			select {
+			case filename, ok := <-changed:
+				if ! ok {
+					if *Debug { log.Printf("Stopping accumulator") }
+					return
+				}
+				if *Debug { log.Printf("accumulator: filename=%v", filename) }
+				_, found := is_changed[filename]
+				if ! found {
+					is_changed[filename] = true
+					filenames = append(filenames, filename)
+				}
+				timer.Reset(latency)
+				
 			case <-timer.C:
 				// No more file changes during latency period, so
 				// report what we've got
@@ -148,15 +177,7 @@ func make_accumulator(latency time.Duration, command Command) changehandler {
 			}
 		}
 	}()
-	return func(filename Filename) {
-		if *Debug { log.Printf("accumulator func(%v)", filename) }
-		_, ok := is_changed[filename]
-		if ! ok {
-			is_changed[filename] = true
-			filenames = append(filenames, filename)
-		}
-		timer.Reset(latency)
-	}
+	return changed
 }
 
 // run_command runs the given shell command on the array of filenames.
