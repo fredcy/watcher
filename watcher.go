@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"github.com/howeyc/fsnotify"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -54,12 +55,12 @@ func make_filechan(filename Filename, latency time.Duration, handler changehandl
 		timer.Stop()
 		for {
 			select {
-			case changed, ok := <-c:
+			case _, ok := <-c:
 				if ! ok {
 					if *Debug { log.Printf("Stopping handler for %v", filename) }
 					return
 				}
-				if *Debug { log.Printf("make_filechan(%v) gets %v", filename, changed) }
+				if *Debug { log.Printf("make_filechan(%v) pinged", filename) }
 				timer.Reset(latency)
 			case <-timer.C:
 				handler(filename)
@@ -79,7 +80,7 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 		log.Fatal("Error: fsnotify.NewWatcher: ", err)
 	}
 	for _, directory := range directories {
-		log.Printf("Watching %v", directory)
+		if *Debug { log.Printf("Watching %v", directory) }
 		err = watcher.Watch(directory)
 		if err != nil {
 			log.Fatalf("Error: watcher.Watch(%s): %s", directory, err)
@@ -104,7 +105,6 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 				if opts.Exclude != nil && opts.Exclude.Match([]byte(ev.Name)) {
 					if *Debug { log.Println("Excluding:", ev.Name) }
 				} else {
-					if *Debug { log.Printf("filechans=%v", filechans) }
 					filename := Filename(ev.Name)
 					filechan, ok := filechans[filename]
 					if ! ok {
@@ -112,6 +112,10 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 						filechans[filename] = filechan
 					}
 					filechan <- true
+					if opts.Subdirs && isdir(ev.Name) {
+						watcher.Watch(ev.Name)
+						if *Debug { log.Printf("Adding watch of %v", ev.Name) }
+					}
 				}
 			}
 		case err := <-watcher.Error:
@@ -198,4 +202,12 @@ func run_command(filenames []Filename, command Command) {
 			log.Printf("Error: Command failed: args=%v err='%v'", args, err)
 		}
 	}
+}
+
+func isdir(filename string) bool {
+	fi, err := os.Stat(filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return fi.IsDir()
 }
