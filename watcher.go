@@ -43,27 +43,27 @@ type Options struct {
 	Subdirs bool
 }
 
-type changehandler func(Filename)
-
-// make_filechan calls the handler on the filename when there is at
-// least one input to the channel (that it returns) followed by quiet period.
-func make_filechan(filename Filename, latency time.Duration, handler changehandler) chan<- bool {
+// make_filechan runs a goroutine that watches a channel (that it
+// returns) indicating changes to the particular file.  When there are
+// no further changes for the latency period it reports to the
+// 'changed' channel.
+func make_filechan(filename Filename, latency time.Duration, changed chan Filename, done chan bool) chan<- bool {
 	if *Debug { log.Printf("make_filechan(%v)", filename) }
 	c := make(chan bool)
 	go func() {
-		timer := time.NewTimer(time.Second)
-		timer.Stop()
+		timer := time.NewTimer(latency)
 		for {
 			select {
 			case _, ok := <-c:
 				if ! ok {
 					if *Debug { log.Printf("Stopping handler for %v", filename) }
+					done <- true
 					return
 				}
 				if *Debug { log.Printf("make_filechan(%v) pinged", filename) }
 				timer.Reset(latency)
 			case <-timer.C:
-				handler(filename)
+				changed <- filename
 			}
 		}
 	}()
@@ -74,7 +74,7 @@ func make_filechan(filename Filename, latency time.Duration, handler changehandl
 // given directories and handles them when they change. Default
 // handling is just to write the names to stdout.  If a command is
 // provided in the options it is also run.
-func Watchdirs(directories []string, opts *Options, done chan bool) {
+func Watchdirs(directories []string, opts *Options, quit chan bool) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal("Error: fsnotify.NewWatcher: ", err)
@@ -87,11 +87,11 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 		}
 	}
 	changed := make_accumulator(opts.Latency, opts.Command)
-	handler := func(filename Filename) { changed <- filename }
 
 	// Read events from the fsnotify watcher and for interesting
 	// events write to the channel created for each unique filename.
 	filechans := make(map[Filename]chan<- bool)
+	done := make(chan bool)		// for filechans to signal when they are done
 	active := true
 	for active {
 		select {
@@ -106,11 +106,12 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 				} else {
 					filename := Filename(ev.Name)
 					filechan, ok := filechans[filename]
-					if ! ok {
-						filechan = make_filechan(filename, opts.Latency, handler)
+					if ok {
+						filechan <- true
+					} else {
+						filechan = make_filechan(filename, opts.Latency, changed, done)
 						filechans[filename] = filechan
 					}
-					filechan <- true
 					if opts.Subdirs && isdir(ev.Name) {
 						watcher.Watch(ev.Name)
 						if *Debug { log.Printf("Adding watch of %v", ev.Name) }
@@ -119,10 +120,11 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 			}
 		case err := <-watcher.Error:
 			log.Println("Error: watcher.Error:", err)
-		case <-done:
+		case <-quit:
 			if *Debug { log.Printf("Stopping main Watcher loop") }
 			for filename := range filechans {
 				close(filechans[filename])
+				<- done
 			}
 			close(changed)
 			active = false
