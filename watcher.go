@@ -95,10 +95,9 @@ func Watchdirs(directories []string, opts *Options, done chan bool) {
 	active := true
 	for active {
 		select {
-		case ev := <-watcher.Event:
-			if ev == nil {
-				log.Println("nil event received")
-				continue
+		case ev, ok := <-watcher.Event:
+			if ! ok {
+				log.Fatal("watcher.Event channel closed unexpectedly")
 			}
 			if *Debug { log.Println("from watcher.Event:", ev) }
 			if ev.IsCreate() || ev.IsModify() {

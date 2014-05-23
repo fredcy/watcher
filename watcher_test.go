@@ -29,7 +29,6 @@ func ExampleWatchdirs() {
 	opts.Latency = 200 * time.Millisecond
 	opts.Exclude = regexp.MustCompile("/x[^/]*$")
 	done := make(chan bool)
-	*Debug = true
 	go func() {
 		Watchdirs(dirs, &opts, done)
 	}()
@@ -37,10 +36,10 @@ func ExampleWatchdirs() {
 	time.Sleep(200 * time.Millisecond) // allow Watchdirs to set up
 	touch("/var/tmp/foo")
 	touch("/var/tmp/bar")
-	time.Sleep(time.Second)		// must be longer than the latency set above
+	time.Sleep(3 * opts.Latency)		// allow latency to expire twice
 	touch("/var/tmp/xfoo")
 	touch("/var/tmp/blah")
-	time.Sleep(time.Second)
+	time.Sleep(3 * opts.Latency)
 	done <- true
 
 	// Output:
@@ -54,15 +53,15 @@ func ExampleSubdirs() {
 	opts.Latency = 200 * time.Millisecond
 	opts.Subdirs = true
 	done := make(chan bool)
-	*Debug = true
 	go func() {
 		Watchdirs(dirs, &opts, done)
 	}()
 	
 	time.Sleep(200 * time.Millisecond) // allow Watchdirs to set up
 	mkdir("/var/tmp/subdirtest")
+	time.Sleep(opts.Latency / 2) // enough time for subdir watch to establish, but less than latency
 	touch("/var/tmp/subdirtest/one")
-	time.Sleep(time.Second)		// must be longer than the latency set above
+	time.Sleep(3 * opts.Latency) // enough time for latency to expire twice
 	done <- true
 	if err := os.RemoveAll("/var/tmp/subdirtest"); err != nil {
 		log.Fatal(err)
