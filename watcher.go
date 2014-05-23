@@ -104,6 +104,10 @@ func Watchdirs(directories []string, opts *Options, quit chan bool) {
 				if opts.Exclude != nil && opts.Exclude.Match([]byte(ev.Name)) {
 					if *Debug { log.Println("Excluding:", ev.Name) }
 				} else {
+					if opts.Subdirs && isdir(ev.Name) {
+						watcher.Watch(ev.Name)
+						if *Debug { log.Printf("Adding watch of %v", ev.Name) }
+					}
 					filename := Filename(ev.Name)
 					filechan, ok := filechans[filename]
 					if ok {
@@ -111,10 +115,6 @@ func Watchdirs(directories []string, opts *Options, quit chan bool) {
 					} else {
 						filechan = make_filechan(filename, opts.Latency, changed, done)
 						filechans[filename] = filechan
-					}
-					if opts.Subdirs && isdir(ev.Name) {
-						watcher.Watch(ev.Name)
-						if *Debug { log.Printf("Adding watch of %v", ev.Name) }
 					}
 				}
 			}

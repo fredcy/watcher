@@ -35,7 +35,7 @@ func ExampleWatchdirs() {
 		done <- true
 	}()
 
-	time.Sleep(200 * time.Millisecond) // allow Watchdirs to set up
+	time.Sleep(100 * time.Millisecond) // allow Watchdirs to set up
 	touch("/var/tmp/foo")
 	touch("/var/tmp/bar")
 	time.Sleep(opts.Latency / 2) // wait less than latency and touch again
@@ -64,7 +64,7 @@ func ExampleSubdirs() {
 		done <- true
 	}()
 	
-	time.Sleep(200 * time.Millisecond) // allow Watchdirs to set up
+	time.Sleep(100 * time.Millisecond) // allow Watchdirs to set up
 	mkdir("/var/tmp/subdirtest")
 	time.Sleep(opts.Latency / 2) // enough time for subdir watch to establish, but less than latency
 	touch("/var/tmp/subdirtest/one")
