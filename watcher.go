@@ -83,7 +83,10 @@ func Watchdirs(directories []string, opts *Options, quit chan bool) {
 		if *Debug { log.Printf("Watching %v", directory) }
 		err = watcher.Watch(directory)
 		if err != nil {
-			log.Fatalf("Error: watcher.Watch(%s): %s", directory, err)
+			log.Printf("Error: watcher.Watch(%s): %s", directory, err)
+			if strings.Contains(err.Error(), "too many open files") {
+				log.Fatal("quitting")
+			}
 		}
 	}
 	changed := make_accumulator(opts.Latency, opts.Command)
@@ -208,7 +211,12 @@ func run_command(filenames []Filename, command Command) {
 func isdir(filename string) bool {
 	fi, err := os.Stat(filename)
 	if err != nil {
-		log.Fatal(err)
+		if strings.Contains(err.Error(), "no such file or directory") {
+			if *Debug { log.Print(err) }
+		} else {
+			log.Fatal(err)
+		}
+		return false
 	}
 	return fi.IsDir()
 }
