@@ -8,6 +8,7 @@ import (
 )
 
 func touch(filename string) {
+	if *Debug { log.Printf("touch(%v)", filename) }
 	fp, err := os.Create(filename)
 	if err != nil {
 		log.Fatal(err)
@@ -24,6 +25,7 @@ func mkdir(dirname string) {
 }
 
 func ExampleWatchdirs() {
+	log.SetFlags(log.Ltime | log.Lmicroseconds)
 	testdir := "tmp-test"
 	mkdir(testdir)
 	dirs := []string{testdir}

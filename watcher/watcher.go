@@ -23,6 +23,8 @@ func main() {
 	flag.Parse()
 	if *nostamp {
 		log.SetFlags(0)
+	} else {
+		log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 	}
 	var directories = flag.Args()
 	var command = watcher.Command(*commandflag)
