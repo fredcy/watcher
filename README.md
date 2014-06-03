@@ -1,7 +1,7 @@
 watcher: command line utility reporting file system notifications
 =======
 
-This package, built on the fsnotify package, provides a command line
+This package, built on the https://github.com/howeyc/fsnotify package, provides a command line
 application that watches multiple directories and/or files for changes
 and reports those changes by printing the file names on standard output.
 
