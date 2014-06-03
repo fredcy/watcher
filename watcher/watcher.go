@@ -18,6 +18,7 @@ func main() {
 	var latency = flag.Duration("latency", time.Second, "seconds to wait for notifications to settle")
 	var excludeflag = flag.String("exclude", "", "pattern of files to ignore")
 	var subdirflag = flag.Bool("subdirs", false, "watch subdirectories too")
+	var longflag = flag.Bool("long", false, "long format outout")
 
 	flag.Parse()
 	if *nostamp {
@@ -60,5 +61,6 @@ func main() {
 	}
 
 	done := make(chan bool)
-	watcher.Watchdirs(directories, &watcher.Options{command, *latency, exclude, *subdirflag}, done)
+	opts := watcher.Options{command, *latency, exclude, *subdirflag, *longflag}
+	watcher.Watchdirs(directories, &opts, done)
 }

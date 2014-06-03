@@ -41,6 +41,7 @@ type Options struct {
 	Latency time.Duration
 	Exclude *regexp.Regexp
 	Subdirs bool
+	Longform bool
 }
 
 // make_filechan runs a goroutine that watches a channel (that it
@@ -89,7 +90,7 @@ func Watchdirs(directories []string, opts *Options, quit chan bool) {
 			}
 		}
 	}
-	changed := make_accumulator(opts.Latency, opts.Command)
+	changed := make_accumulator(opts)
 
 	// Read events from the fsnotify watcher and for interesting
 	// events write to the channel created for each unique filename.
@@ -140,7 +141,7 @@ func Watchdirs(directories []string, opts *Options, quit chan bool) {
 // make_accumulator returns a channel that is written when a filename
 // has changed and which accumulates the reported filenames and when
 // there is quiet period handles those filenames.
-func make_accumulator(latency time.Duration, command Command) chan Filename {
+func make_accumulator(opts *Options) chan Filename {
 	var is_changed map[Filename]bool
 	var filenames []Filename
 	timer := time.NewTimer(time.Second)
@@ -154,9 +155,14 @@ func make_accumulator(latency time.Duration, command Command) chan Filename {
 		for i := range filenames {
 			snames[i] = string(filenames[i])
 		}
-		fmt.Println(strings.Join(snames, "\t"))
-		if command != "" {
-			run_command(filenames, command)
+		if opts.Longform {
+			timestamp := time.Now().Format("2006-01-02T15:04:05.999")
+			fmt.Printf("%s\t%s\n", timestamp, strings.Join(snames, "\t"))
+		} else {
+			fmt.Println(strings.Join(snames, "\t"))
+		}
+		if opts.Command != "" {
+			run_command(filenames, opts.Command)
 		}
 	}
 	changed := make(chan Filename)
@@ -175,7 +181,7 @@ func make_accumulator(latency time.Duration, command Command) chan Filename {
 					is_changed[filename] = true
 					filenames = append(filenames, filename)
 				}
-				timer.Reset(latency)
+				timer.Reset(opts.Latency)
 				
 			case <-timer.C:
 				// No more file changes during latency period, so
