@@ -71,5 +71,5 @@ func main() {
 
 	done := make(chan bool)
 	opts := watcher.Options{command, *latency, exclude, *subdirflag, *longflag}
-	watcher.Watchdirs(dirstowatch, &opts, done)
+	watcher.WatchRaw(dirstowatch, &opts, done)
 }
