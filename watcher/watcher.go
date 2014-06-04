@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -35,6 +36,7 @@ func main() {
 		exclude = regexp.MustCompile(*excludeflag)
 	}
 
+	var dirstowatch []string
 	if *subdirflag {
 		subdirs := make([]string, 0)
 		baddirs := make(map[string]bool)
@@ -42,7 +44,10 @@ func main() {
 			//log.Printf("walkfn(%v, %v, %v)", path, info, err)
 			if err != nil {
 				log.Printf("warning: %v", err)
-				if info.IsDir() {
+				switch {
+				case strings.Contains(err.Error(), "no such file or directory"):
+					baddirs[path] = true
+				case info.IsDir():
 					baddirs[path] = true
 				}
 				return nil
@@ -57,12 +62,14 @@ func main() {
 		}
 		for _, dir := range(subdirs) {
 			if ! baddirs[dir] {
-				directories = append(directories, dir)
+				dirstowatch = append(dirstowatch, dir)
 			}
 		}
+	} else {
+		dirstowatch = directories
 	}
 
 	done := make(chan bool)
 	opts := watcher.Options{command, *latency, exclude, *subdirflag, *longflag}
-	watcher.Watchdirs(directories, &opts, done)
+	watcher.Watchdirs(dirstowatch, &opts, done)
 }

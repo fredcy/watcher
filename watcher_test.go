@@ -46,6 +46,9 @@ func ExampleWatchdirs() {
 	touch(testdir + "/bar")
 	time.Sleep(3 * opts.Latency) // allow latency to expire twice
 	touch(testdir + "/xfoo")
+	// Pause briefly, otherwise fsnotify will sometimes miss the
+	// following event on Mac OS X (a bug in fsnotify).
+	time.Sleep(time.Millisecond)
 	touch(testdir + "/blah")
 	time.Sleep(3 * opts.Latency)
 	quit <- true
