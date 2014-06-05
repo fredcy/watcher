@@ -266,16 +266,67 @@ func isdir(filename string) bool {
 
 func WatchRaw(directories []string, opts *Options, quit chan bool) {
 	events := watch(directories, opts, quit)
+	if opts.Latency != 0 {
+		events = simplify(events, opts)
+	}
 	for event := range events {
-		timestamp := event.Timestamp.Format("2006-01-02 15:04:05.999")
-		info := ""
-		if event.Fileinfo != nil {
-			info = fmt.Sprintf("%d", event.Fileinfo.Size())
+		if opts.Longform {
+			timestamp := event.Timestamp.Format("2006-01-02 15:04:05.999")
+			info := ""
+			if event.Fileinfo != nil {
+				info = fmt.Sprintf("%d", event.Fileinfo.Size())
+			}
+			fmt.Printf("%s\t%s\t%s\t%s\n", timestamp, event.Filename, event.Mask, info)
+		} else {
+			fmt.Println(event.Filename)
 		}
-		fmt.Printf("%s\t%s\t%s\t%s\n", timestamp, event.Filename, event.Mask, info)
 	}
 }
 
+
+func simplify(events chan Event, opts *Options) chan Event {
+	out := make(chan Event)
+	done := make(chan bool)
+	go func() {
+		handlers := make(map[string]chan<-Event)
+		for event := range events {
+			handler, ok := handlers[event.Filename]
+			if ! ok {
+				handler = make_handler(event.Filename, opts.Latency, out, done)
+				handlers[event.Filename] = handler
+			}
+			handler <- event
+		}
+		for filename := range handlers {
+			close(handlers[filename])
+			<- done
+		}
+	}()
+	return out
+}
+
+func make_handler(filename string, latency time.Duration, out chan Event, done chan bool) chan<- Event {
+	if *Debug { log.Printf("make_handler(%v)", filename) }
+	input := make(chan Event)
+	go func() {
+		var event Event
+		var ok bool
+		timer := time.NewTimer(latency)
+		for {
+			select {
+			case event, ok = <-input:
+				if ! ok {
+					done <- true
+					return
+				}
+				timer.Reset(latency)
+			case <- timer.C:
+				out <- event
+			}
+		}
+	}()
+	return input	
+}
 
 // watch returns a channel that produces Event items reporting file
 // changes within the given directories. It wraps an fsnotify watcher
