@@ -35,7 +35,6 @@ func main() {
 	if *excludeflag != "" {
 		exclude = regexp.MustCompile(*excludeflag)
 	}
-
 	var dirstowatch []string
 	if *subdirflag {
 		subdirs := make([]string, 0)
@@ -46,20 +45,35 @@ func main() {
 				log.Printf("warning: %v", err)
 				switch {
 				case strings.Contains(err.Error(), "no such file or directory"):
+					// handle first since info.IsDir() cannot work in this case
 					baddirs[path] = true
 				case info.IsDir():
+					// directories sometimes get visited twice (oddly)
+					// with an error on the second visit only
 					baddirs[path] = true
+					return filepath.SkipDir
 				}
 				return nil
 			}
 			if info.IsDir() {
+				if exclude != nil && exclude.MatchString(path) {
+					if *watcher.Debug { log.Printf("Excluding %s", path) }
+					return filepath.SkipDir
+				}
 				subdirs = append(subdirs, path)
+			}
+			if info.Mode() & os.ModeNamedPipe == os.ModeNamedPipe {
+				dirpath := filepath.Dir(path)
+				log.Printf("Warning: %s is a named pipe; ignoring %s",
+					path, dirpath)
+				baddirs[dirpath] = true
 			}
 			return nil
 		}
 		for _, directory := range(directories) {
 			filepath.Walk(directory, walkfn)
 		}
+		// filter the generated list of directories, removing any marked as bad above
 		for _, dir := range(subdirs) {
 			if ! baddirs[dir] {
 				dirstowatch = append(dirstowatch, dir)

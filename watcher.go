@@ -291,12 +291,13 @@ func watch(directories []string, opts *Options, quit chan bool) chan Event {
 		if *Debug { log.Printf("Watching %v", directory) }
 		err = watcher.Watch(directory)
 		if err != nil {
-			log.Printf("Error: watcher.Watch(%s): %s", directory, err)
+			log.Printf("Error: watcher.Watch(%s): %s\n", directory, err)
 			if strings.Contains(err.Error(), "too many open files") {
 				log.Panic("quitting")
 			}
 		}
 	}
+	if *Debug { log.Println("All directory watches established") }
 	events := make(chan Event)
 	go func() {
 		active := true
@@ -310,7 +311,7 @@ func watch(directories []string, opts *Options, quit chan bool) chan Event {
 				event.Timestamp = time.Now() // record event time ASAP
 
 				if *Debug { log.Println("from watcher.Event:", ev) }
-				if opts.Exclude != nil && opts.Exclude.Match([]byte(ev.Name)) {
+				if opts.Exclude != nil && opts.Exclude.MatchString(ev.Name) {
 					if *Debug { log.Println("Excluding:", ev.Name) }
 					break
 				}
