@@ -32,6 +32,7 @@ func ExampleWatchdirs() {
 	var opts Options
 	opts.Latency = 200 * time.Millisecond
 	opts.Exclude = regexp.MustCompile("/x[^/]*$")
+	opts.Group = true
 	quit := make(chan bool)
 	done := make(chan bool)
 	go func() {
@@ -69,6 +70,7 @@ func ExampleSubdirs() {
 	var opts Options
 	opts.Latency = 200 * time.Millisecond
 	opts.Subdirs = true
+	opts.Group = true
 	quit := make(chan bool)
 	done := make(chan bool)
 	go func() {

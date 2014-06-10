@@ -14,12 +14,12 @@ import (
 )
 
 func main() {
-	var commandflag = flag.String("command", "", "command to run")
 	var nostamp = flag.Bool("nostamp", false, "no datetime stamp for log output")
 	var latency = flag.Duration("latency", 200 * time.Millisecond, "seconds to wait for notifications to settle")
 	var excludeflag = flag.String("exclude", "", "pattern of files to ignore")
 	var subdirflag = flag.Bool("subdirs", false, "watch subdirectories too")
 	var longflag = flag.Bool("long", false, "long format outout")
+	var groupflag = flag.Bool("group", false, "group files changed before latency period")
 
 	flag.Parse()
 	if *nostamp {
@@ -28,9 +28,6 @@ func main() {
 		log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 	}
 	var directories = flag.Args()
-	var command = watcher.Command(*commandflag)
-	if *watcher.Debug { log.Printf("Command is \"%v\"", command) }
-
 	var exclude *regexp.Regexp
 	if *excludeflag != "" {
 		exclude = regexp.MustCompile(*excludeflag)
@@ -82,6 +79,6 @@ func main() {
 	}
 
 	done := make(chan bool)
-	opts := watcher.Options{command, *latency, exclude, *subdirflag, *longflag}
-	watcher.WatchRaw(dirstowatch, &opts, done)
+	opts := watcher.Options{*latency, exclude, *subdirflag, *longflag, *groupflag}
+	watcher.Watchdirs(dirstowatch, &opts, done)
 }
