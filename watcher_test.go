@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -138,7 +139,7 @@ func TestSubdirs(t *testing.T) {
 	quit <- true
 	<-done
 
-	if os.PathSeparator == '\\' {
+	if runtime.GOOS == "windows" {
 		// in Windows, touching a file causes the directory to be reported as MODIFIED as well
 		must_equal(t, subfile1 + "\t" + subdir + "\n" + subfile2 + "\t" + subdir + "\n", out.String())
 	} else {
