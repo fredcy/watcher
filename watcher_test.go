@@ -73,7 +73,11 @@ func TestWatchdirs(t *testing.T) {
 	dirs := []string{testdir}
 	var opts Options
 	opts.Latency = 200 * time.Millisecond
-	opts.Exclude = regexp.MustCompile("/x[^/]*$")
+	if os.PathSeparator == '\\' {
+		opts.Exclude = regexp.MustCompile(`\\x[^\\]*$`)
+	} else {
+		opts.Exclude = regexp.MustCompile(`/x[^/]*$`)
+	}
 	opts.Group = true
 	quit := make(chan bool)
 	done := make(chan bool)
@@ -134,5 +138,10 @@ func TestSubdirs(t *testing.T) {
 	quit <- true
 	<-done
 
-	must_equal(t, subdir + "\t" + subfile1 + "\n" + subfile2 + "\n", out.String())
+	if os.PathSeparator == '\\' {
+		// in Windows, touching a file causes the directory to be reported as MODIFIED as well
+		must_equal(t, subfile1 + "\t" + subdir + "\n" + subfile2 + "\t" + subdir + "\n", out.String())
+	} else {
+		must_equal(t, subdir + "\t" + subfile1 + "\n" + subfile2 + "\n", out.String())
+	}
 }
