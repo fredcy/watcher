@@ -12,6 +12,7 @@ package watcher
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"code.google.com/p/go.exp/fsnotify"
 	"os"
@@ -90,7 +91,7 @@ func isdir(filename string) bool {
 }
 
 // Watchdirs() is the main entry point for watching a list of directories.
-func Watchdirs(directories []string, opts *Options, quit chan bool) {
+func Watchdirs(directories []string, opts *Options, quit chan bool, out io.Writer) {
 	events := watch(directories, opts, quit)
 	if opts.Latency != 0 {
 		events = simplify(events, opts)
@@ -98,11 +99,11 @@ func Watchdirs(directories []string, opts *Options, quit chan bool) {
 	if opts.Group {
 		events = group(events, opts)
 		for event := range events {
-			fmt.Print(event.Filename)
+			fmt.Fprint(out, event.Filename)
 			if event.Settled {
-				fmt.Print("\n")
+				fmt.Fprint(out, "\n")
 			} else {
-				fmt.Print("\t")
+				fmt.Fprint(out, "\t")
 			}
 		}
 		return
@@ -114,9 +115,9 @@ func Watchdirs(directories []string, opts *Options, quit chan bool) {
 			if event.Fileinfo != nil {
 				info = fmt.Sprintf("%d", event.Fileinfo.Size())
 			}
-			fmt.Printf("%s\t%s\t%s\t%s\n", timestamp, event.Filename, event.Mask, info)
+			fmt.Fprintf(out, "%s\t%s\t%s\t%s\n", timestamp, event.Filename, event.Mask, info)
 		} else {
-			fmt.Println(event.Filename)
+			fmt.Fprintln(out, event.Filename)
 		}
 	}
 }
